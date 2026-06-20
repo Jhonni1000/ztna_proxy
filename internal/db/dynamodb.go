@@ -16,9 +16,10 @@ import (
 
 type DynamodbStore struct {
 	dynamodbConn *dynamodb.Client
+	myTableName  string
 }
 
-func InitialiseClient(ctx context.Context) DynamodbStore {
+func InitialiseClient(ctx context.Context) *DynamodbStore {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		log.Fatalf("Unable to load AWS default configuration, %w", err)
@@ -26,7 +27,7 @@ func InitialiseClient(ctx context.Context) DynamodbStore {
 
 	dynamodbClient := dynamodb.NewFromConfig(cfg)
 
-	return DynamodbStore{dynamodbClient}
+	return &DynamodbStore{dynamodbClient, "ztna-policies"}
 }
 
 func (c *DynamodbStore) Create(ctx context.Context, policy *models.Policy) error {
@@ -37,9 +38,8 @@ func (c *DynamodbStore) Create(ctx context.Context, policy *models.Policy) error
 		return err
 	}
 
-	var myTableName = "ztna-policies"
 	dynamoDBInput := dynamodb.PutItemInput{
-		TableName: &myTableName,
+		TableName: &c.myTableName,
 		Item:      dynamodbMap,
 	}
 
@@ -56,9 +56,8 @@ func (c *DynamodbStore) Get(ctx context.Context, Id string) (*models.Policy, err
 		"id": &types.AttributeValueMemberS{Value: Id},
 	}
 
-	var myTableName = "ztna-policies"
 	dynamoDBInput := dynamodb.GetItemInput{
-		TableName: &myTableName,
+		TableName: &c.myTableName,
 		Key:       lookupMap,
 	}
 
@@ -81,9 +80,8 @@ func (c *DynamodbStore) Get(ctx context.Context, Id string) (*models.Policy, err
 
 func (c *DynamodbStore) List(ctx context.Context) ([]*models.Policy, error) {
 
-	var myTableName = "ztna-policies"
 	queryInput := dynamodb.ScanInput{
-		TableName: &myTableName,
+		TableName: &c.myTableName,
 	}
 
 	dynamodbOutput, err := c.dynamodbConn.Scan(ctx, &queryInput)
@@ -105,10 +103,9 @@ func (c *DynamodbStore) Delete(ctx context.Context, Id string) error {
 		"id": &types.AttributeValueMemberS{Value: Id},
 	}
 
-	var myTableName = "ztna-policies"
 	dynamodbInput := dynamodb.DeleteItemInput{
 		Key:       lookupMap,
-		TableName: &myTableName,
+		TableName: &c.myTableName,
 	}
 
 	_, err := c.dynamodbConn.DeleteItem(ctx, &dynamodbInput)
