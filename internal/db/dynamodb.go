@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/google/uuid"
 )
 
@@ -19,7 +21,7 @@ type DynamodbStore struct {
 func InitialiseClient(ctx context.Context) DynamodbStore {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		log.Fatalf("Unable to load AWS default configuration, %s", err)
+		log.Fatalf("Unable to load AWS default configuration, %w", err)
 	}
 
 	dynamodbClient := dynamodb.NewFromConfig(cfg)
@@ -49,14 +51,69 @@ func (c *DynamodbStore) Create(ctx context.Context, policy *models.Policy) error
 	return nil
 }
 
-func (c *DynamodbStore) Get(ctx context.Context, id string) (*models.Policy, error) {
+func (c *DynamodbStore) Get(ctx context.Context, Id string) (*models.Policy, error) {
+	lookupMap := map[string]types.AttributeValue{
+		"id": &types.AttributeValueMemberS{Value: Id},
+	}
 
+	var myTableName = "ztna-policies"
+	dynamoDBInput := dynamodb.GetItemInput{
+		TableName: &myTableName,
+		Key:       lookupMap,
+	}
+
+	dynamodbOutput, err := c.dynamodbConn.GetItem(ctx, &dynamoDBInput)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(dynamodbOutput.Item) == 0 || dynamodbOutput.Item == nil {
+		return nil, fmt.Errorf("Policy not Found")
+	}
+
+	output := models.Policy{}
+	err = attributevalue.UnmarshalMap(dynamodbOutput.Item, &output)
+	if err != nil {
+		return nil, err
+	}
+	return &output, nil
 }
 
 func (c *DynamodbStore) List(ctx context.Context) ([]*models.Policy, error) {
 
+	var myTableName = "ztna-policies"
+	queryInput := dynamodb.ScanInput{
+		TableName: &myTableName,
+	}
+
+	dynamodbOutput, err := c.dynamodbConn.Scan(ctx, &queryInput)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to query policies %w", err)
+	}
+
+	policies := []*models.Policy{}
+	err = attributevalue.UnmarshalListOfMaps(dynamodbOutput.Items, &policies)
+	if err != nil {
+		return nil, fmt.Errorf("Error while Unmarshalling Map %w", err)
+	}
+
+	return policies, nil
 }
 
-func (c *DynamodbStore) Delete(ctx context.Context, id string) error {
+func (c *DynamodbStore) Delete(ctx context.Context, Id string) error {
+	lookupMap := map[string]types.AttributeValue{
+		"id": &types.AttributeValueMemberS{Value: Id},
+	}
 
+	var myTableName = "ztna-policies"
+	dynamodbInput := dynamodb.DeleteItemInput{
+		Key:       lookupMap,
+		TableName: &myTableName,
+	}
+
+	_, err := c.dynamodbConn.DeleteItem(ctx, &dynamodbInput)
+	if err != nil {
+		return fmt.Errorf("Unable to delete input, %w", err)
+	}
+	return nil
 }
